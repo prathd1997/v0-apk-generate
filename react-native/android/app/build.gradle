@@ -1,0 +1,122 @@
+apply plugin: "com.android.application"
+apply plugin: "com.facebook.react"
+
+import com.android.build.OutputFile
+import org.apache.tools.ant.taskdefs.condition.Os
+
+def projectRoot = rootDir.getAbsoluteFile().getParentFile().getAbsolutePath()
+
+react {
+    entryFile = "index.js"
+    reactNativeDir = file("../node_modules/react-native")
+    codegenDir = file("../node_modules/@react-native/codegen")
+    cliFile = file("../node_modules/@react-native/cli/build/bin.js")
+    
+    debuggableVariants = ["liveReload", "developmentDebug", "stagingDebug"]
+    
+    bundleCommand = "bundle"
+    bundleConfig = file(../bundle_config.json)
+    bundleAssetName = "index.android.bundle"
+    entryFile = "index.js"
+    extraPackagerArgs = []
+}
+
+def enableSeparateBuildPerCPUArchitecture = false
+def enableProguardInReleaseBuilds = false
+def jscFlavor = 'org.webkit:android-jsc:+'
+def enableHermes = project.ext.react.get("enableHermes", true);
+
+def nativeArchitectures = project.getProperties().get("reactNativeDebugArchitectures")
+
+android {
+    ndkVersion rootProject.ext.ndkVersion
+    compileSdkVersion rootProject.ext.compileSdkVersion
+
+    namespace "com.whitelabel.app"
+    defaultConfig {
+        applicationId System.getenv("PACKAGE_NAME") ?: "com.whitelabel.app"
+        minSdkVersion rootProject.ext.minSdkVersion
+        targetSdkVersion rootProject.ext.targetSdkVersion
+        versionCode System.getenv("VERSION_CODE")?.toInteger() ?: 1
+        versionName System.getenv("VERSION_NAME") ?: "1.0.0"
+        
+        resValue "string", "app_name", System.getenv("APP_NAME") ?: "White Label App"
+        
+        buildConfigField "String", "APP_NAME", "\"${System.getenv("APP_NAME") ?: "White Label App"}\""
+        buildConfigField "String", "DISPLAY_NAME", "\"${System.getenv("DISPLAY_NAME") ?: "My App"}\""
+        buildConfigField "String", "PRIMARY_COLOR", "\"${System.getenv("PRIMARY_COLOR") ?: "#2563eb"}\""
+        buildConfigField "String", "API_BASE_URL", "\"${System.getenv("API_BASE_URL") ?: "https://api.example.com"}\""
+    }
+
+    splits {
+        abi {
+            reset()
+            enable enableSeparateBuildPerCPUArchitecture
+            universalApk false
+            include "armeabi-v7a", "x86", "arm64-v8a", "x86_64"
+        }
+    }
+    
+    signingConfigs {
+        debug {
+            storeFile file('debug.keystore')
+            storePassword 'android'
+            keyAlias 'androiddebugkey'
+            keyPassword 'android'
+        }
+        release {
+            if (project.hasProperty('MYAPP_UPLOAD_STORE_FILE')) {
+                storeFile file(MYAPP_UPLOAD_STORE_FILE)
+                storePassword MYAPP_UPLOAD_STORE_PASSWORD
+                keyAlias MYAPP_UPLOAD_KEY_ALIAS
+                keyPassword MYAPP_UPLOAD_KEY_PASSWORD
+            }
+        }
+    }
+    
+    buildTypes {
+        debug {
+            signingConfig signingConfigs.debug
+            if (nativeArchitectures) {
+                ndk {
+                    abiFilters nativeArchitectures.split(',')
+                }
+            }
+        }
+        release {
+            signingConfig signingConfigs.release
+            minifyEnabled enableProguardInReleaseBuilds
+            proguardFiles getDefaultProguardFile("proguard-android.txt"), "proguard-rules.pro"
+        }
+    }
+
+    applicationVariants.all { variant ->
+        variant.outputs.each { output ->
+            def outputFile = output.outputFile
+            if (outputFile != null && outputFile.name.endsWith('.apk')) {
+                def fileName = outputFile.name.replace("app-", "${System.getenv("APP_NAME") ?: "WhiteLabelApp"}-")
+                output.outputFileName = fileName
+            }
+        }
+    }
+}
+
+dependencies {
+    implementation fileTree(dir: "libs", include: ["*.jar"])
+    implementation "com.facebook.react:react-android"
+    implementation "androidx.swiperefreshlayout:swiperefreshlayout:1.0.0"
+    
+    debugImplementation("com.facebook.flipper:flipper:${FLIPPER_VERSION}")
+    debugImplementation("com.facebook.flipper:flipper-network-plugin:${FLIPPER_VERSION}") {
+        exclude group:'com.squareup.okhttp3', module:'okhttp'
+    }
+    debugImplementation("com.facebook.flipper:flipper-fresco-plugin:${FLIPPER_VERSION}")
+    
+    if (enableHermes) {
+        implementation("com.facebook.react:hermes-android")
+    } else {
+        implementation jscFlavor
+    }
+}
+
+apply from: file("../../node_modules/@react-native-community/cli-platform-android/native_modules.gradle"); applyNativeModulesAppBuildGradle(project)
